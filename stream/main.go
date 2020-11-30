@@ -11,20 +11,29 @@ import (
 	stream "github.com/GetStream/stream-chat-go/v2"
 )
 
-var APIKey string
-var APISecret string
-var ServerSideClient stream.Client
+var client stream.Client
+var channel stream.Channel
 
-func init() {
-	APIKey = os.Getenv("STREAM_API_KEY")
-	APISecret = os.Getenv("STREAM_API_SECRET")
+func message(w http.ResponseWriter, r *http.Request) {
+    switch r.Method {
+    case "GET":
+        client.
+    case "POST":
+        var request {
+            UserID string
+            Text string
+        } 
+        if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+            log.Println(err)
+	    }
+        channel.SendMessage(&stream.Message{Text: request.Text}, request.UserID)
+    }
 }
 
 func join(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "POST":
 		newUser := &stream.User{}
-
 		err := json.NewDecoder(r.Body).Decode(newUser)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -32,20 +41,20 @@ func join(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Create the user or update if user already exists
-		user, err := ServerSideClient.UpdateUser(newUser)
+		user, err := client.UpdateUser(newUser)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		token, err := ServerSideClient.CreateToken(user.ID, time.Now().Add(time.Minute*time.Duration(60)))
+		token, err := client.CreateToken(user.ID, time.Now().Add(time.Minute*time.Duration(60)))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		// Return the already created General channel
-		channel, err := ServerSideClient.CreateChannel("team", "general", "admin", nil)
+		channel, err := client.CreateChannel("team", "general", "admin", nil)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -71,7 +80,7 @@ func join(w http.ResponseWriter, r *http.Request) {
 		}{
 			User:   *user,
 			Token:  string(token),
-			APIKey: APIKey,
+			APIKey: os.Getenv("STREAM_API_KEY"),
 		})
 
 	default:
@@ -82,12 +91,12 @@ func join(w http.ResponseWriter, r *http.Request) {
 func main() {
 	port := os.Getenv("PORT")
 
-	client, err := stream.NewClient(APIKey, []byte(APISecret))
+	c, err := stream.NewClient(os.Getenv("STREAM_API_KEY"), []byte(os.Getenv("STREAM_API_SECRET")))
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	ServerSideClient = *client
+	client = *c
 
 	// Create admin user or update if admin already exists
 	_, err = client.UpdateUser(&stream.User{
@@ -108,6 +117,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/join", join)
+	mux.HandleFunc("/message", message)
 
 	if err := http.ListenAndServe(":"+port, mux); err != nil {
 		log.Fatal(err)
